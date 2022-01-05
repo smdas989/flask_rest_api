@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Followers</h2>
+<div class="container">
+  <table class="table">
+    {% for user in current_user.followers.all()%}
+    <tbody>
+      <tr>
+        <td><a href="#">{{user.username}}</a></td>
+        <td><a href="{{ url_for('unfollow', username=user.username) }}">Remove</a></td>
+      </tr>
+    </tbody>
+    {% endfor %}
+  </table>
+</div>
+
+{% endblock content %}

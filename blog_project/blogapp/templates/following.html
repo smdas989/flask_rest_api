@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Following</h2>
+<div class="container">
+  <table class="table">
+    {% for user in current_user.followed.all() %}
+    <tbody>
+      <tr>
+        <td><a href="#">{{user.username}}</a></td>
+        {% if not current_user.is_following(user) %}
+            <td><a href="{{ url_for('follow', username=user.username) }}"><button type="button" class="btn btn-danger">follow</button></a></td>
+        {% else %}
+            <td><a href="{{ url_for('unfollow', username=user.username) }}"><button type="button" class="btn btn-danger">unfollow</button></a></td>
+        {% endif %}
+      </tr>
+    </tbody>
+    {% endfor %}
+  </table>
+</div>
+
+
+{% endblock content %}

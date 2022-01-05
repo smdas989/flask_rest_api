@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <table>
+      <tr valign="top">
+          <img class="rounded-circle article-img" src="{{ url_for('static', filename='profile_pics/' + user.image_file) }}">
+          <td>
+              <h1>User: {{ user.username }}</h1>
+              <p>{{ user.followed.count() }} following | {{ user.followers.count() }} followers </p>
+              {% if user.id == current_user.id %}
+                  <a href="{{ url_for('account') }}">Edit your profile</a>
+              {% elif not current_user.is_following(user) %}
+                  <a href="{{ url_for('follow', username=user.username) }}">Follow</a>
+              {% else %}
+                  <a href="{{ url_for('unfollow', username=user.username) }}">Unfollow</a>
+              {% endif %}
+              </p>
+          </td>
+      </tr>
+  </table>
+  <hr>
+
+  
+  
+{% endblock %}

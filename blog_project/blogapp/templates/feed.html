@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+  {% for post in posts.items  %} 
+  <article class="media content-section">
+      <img class="rounded-circle article-img" src="{{ url_for('static', filename='profile_pics/' + post.author.image_file) }}">
+      <div class="media-body">
+        <div class="article-metadata">
+          <a class="mr-2" href="{{ url_for('user_profile', user_id=post.author.id ) }}">{{ post.author.username }}</a>
+          <small class="text-muted">Created: {{ post.date_posted.strftime('%Y-%m-%d') }}</small>
+          <small class="text-muted">Updated: {{ post.date_updated.strftime('%Y-%m-%d') }}</small>
+        </div>
+        <h2><a class="article-title" href="{{ url_for('post', post_id=post.id ) }}">{{ post.title }}</a></h2>
+        <p class="article-content">{{ post.content[:140] }}  <a href="{{ url_for('post', post_id=post.id ) }}">read more</a></p>
+        {% if current_user.is_authenticated %}
+            {% if current_user.has_liked_post(post) %}
+              <a href="{{ url_for('like_action', post_id=post.id, action='unlike') }}">Unlike</a>
+            {% else %}
+              <a href="{{ url_for('like_action', post_id=post.id, action='like') }}">Like</a>
+            {% endif %}
+            {{ post.likes.count() }} likes
+            {{ post.comments.count() }} comments
+        {% else %}
+          {{ post.likes.count() }} likes
+          {{ post.comments.count() }} comments
+        {% endif %}
+      </div>
+    </article>
+  {% endfor %}
+  <ul class="pagination">
+    {% if posts.has_prev %}
+     <li class="page-item"><a class="page-link" href="{{ url_for('feed', page=posts.prev_num, sort_by=sort_by) }}">Previous</a></li>
+    {% else %}
+     <li class="page-item disabled"><span class="page-link">Previous</span>
+    {% endif %}
+     </li>
+
+    {% for page_num in posts.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+    {% if page_num %}
+    {% if posts.page == page_num %}
+      <a class="btn btn-info mb-4" href="{{ url_for('feed', page=page_num, sort_by=sort_by )}}">{{ page_num }}</a>
+    {% else %}
+      <a class="btn btn-outline-info mb-4" href="{{ url_for('feed', page=page_num, sort_by=sort_by) }}">{{ page_num }}</a>
+    {% endif %}
+    {% else %}
+    ...
+    {% endif %}
+    {% endfor %}
+
+    {% if posts.has_next %}
+       <li class="page-item"><a class="page-link" href="{{ url_for('feed', page=posts.next_num, sort_by=sort_by) }}">Next</a></li>
+    {% else %}
+       <li class="page-item disabled"><span class="page-link">Next</span>
+    {% endif %}
+  </ul>
+ 
+{% endblock %}
+
+
+
+  
+
+     
