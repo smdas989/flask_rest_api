@@ -2,7 +2,11 @@ from datetime import datetime
 from blogapp import db, login_manager, app
 from flask_login import UserMixin
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
-
+from passlib.apps import custom_app_context as pwd_context
+from itsdangerous import (TimedJSONWebSignatureSerializer as Serializer, BadSignature, SignatureExpired)
+from functools import wraps
+from flask import request, jsonify
+import jwt
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -17,7 +21,7 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True)
     # image_file = db.Column(db.String(20), nullable=False, default='default.jpg')
     password = db.Column(db.String(60), nullable=False)
-    # posts = db.relationship('Post', backref='author', lazy=True)
+    posts = db.relationship('Post', backref='author', lazy=True)
     # liked = db.relationship(
     #     'PostLike',
     #     foreign_keys='PostLike.user_id',
@@ -82,8 +86,8 @@ class User(db.Model, UserMixin):
     #     return User.query.get(user_id)
 
     def json(self):
-        return {'id': self.id, 'title': self.title,
-                'year': self.year, 'genre': self.genre}
+        return {'id': self.id, 'username': self.username,
+                'email': self.email}
 
     
     def add_user(_username, _email, _password):
@@ -102,14 +106,38 @@ class User(db.Model, UserMixin):
         '''function to get movie using the id of the movie as parameter'''
         return [User.json(User.query.filter_by(id=_id).first())]
 
-    # def update_user(_id, _title, _year, _genre):
+    # def update_user(_id, _title, _content):
     #     '''function to update the details of a movie using the id, title,
     #     year and genre as parameters'''
-    #     movie_to_update = Movie.query.filter_by(id=_id).first()
-    #     movie_to_update.title = _title
-    #     movie_to_update.year = _year
-    #     movie_to_update.genre = _genre
+    #     user_to_update = User.query.filter_by(id=_id).first()
+    #     user_to_update.title = _title
+    #     user_to_update.content = _content
     #     db.session.commit()
+
+
+    def hash_password(self, password):
+        self.password_hash = pwd_context.encrypt(password)
+
+    def verify_password(self, password):
+        return pwd_context.verify(password, self.password_hash)
+
+    def generate_auth_token(self, expiration = 600):
+        s = Serializer(app.config['SECRET_KEY'], expires_in = expiration)
+        return s.dumps({ 'id': self.id })
+
+    @staticmethod
+    def verify_auth_token(token):
+        s = Serializer(app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except SignatureExpired:
+            return None # valid token, but expired
+        except BadSignature:
+            return None # invalid token
+        user = User.query.get(data['id'])
+        return user
+    
+    
 
     def __repr__(self):
         return f"User('{self.username}', '{self.email}')"
@@ -122,23 +150,41 @@ class User(db.Model, UserMixin):
 
     
 
-# class Post(db.Model):
-#     id = db.Column(db.Integer, primary_key=True)
-#     title = db.Column(db.String(100), nullable=False)
-#     date_posted = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-#     date_updated = db.Column(db.DateTime, default=datetime.utcnow)
-#     content = db.Column(db.Text, nullable=False)
-#     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-#     likes = db.relationship('PostLike', backref='post', lazy='dynamic')
-#     comments = db.relationship('Comment', backref='title', lazy='dynamic')
+class Post(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    date_posted = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, default=datetime.utcnow)
+    content = db.Column(db.Text, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    # likes = db.relationship('PostLike', backref='post', lazy='dynamic')
+    # comments = db.relationship('Comment', backref='title', lazy='dynamic')
 
-#     def get_comments(self):
-#         return Comment.query.filter_by(post_id=post.id).order_by(Comment.timestamp.desc())
+    # def get_comments(self):
+    #     return Comment.query.filter_by(post_id=post.id).order_by(Comment.timestamp.desc())
+    def json(self):
+        return {'id': self.id, 'title': self.title,
+                'content': self.content}
+
+    def get_all_posts():
+        return [Post.json(post) for post in Post.query.all()]
 
 
+    def get_post(_id):
+        return [Post.json(Post.query.filter_by(id=_id).first())]
     
-#     def __repr__(self):
-#         return f"User('{self.title}', '{self.date_posted}')"
+    def update_post(_id, _title, _content):
+        post_to_update = Post.query.filter_by(id=_id).first()
+        post_to_update.title = _title
+        post_to_update.content = _content
+        db.session.commit()
+    
+    def delete_post(_id):
+        post_to_update = Post.query.filter_by(id=_id).delete()
+        db.session.commit()
+
+    def __repr__(self):
+        return f"User('{self.title}', '{self.date_posted}')"
 
 
 # class Comment(db.Model):
@@ -150,4 +196,23 @@ class User(db.Model, UserMixin):
     
 #     def __repr__(self):
 #         return f"Comment('{self.body}')"
-    
+
+def token_required(f):
+    @wraps(f)
+    def decorator(*args, **kwargs):
+        token = None
+
+        if 'x-access-tokens' in request.headers:
+            token = request.headers['x-access-tokens']
+
+        if not token:
+            return jsonify({'message': 'a valid token is missing'})
+
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'])
+            current_user = User.query.filter_by(id=data['public_id']).first()
+        except:
+            return jsonify({'message': 'token is invalid'})
+
+        return f(current_user.id, *args, **kwargs)
+    return decorator

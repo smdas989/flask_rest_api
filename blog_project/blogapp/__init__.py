@@ -12,7 +12,7 @@ from flask_restplus import Api
 app = Flask(__name__)
 api = Api(app)
 app.config['SECRET_KEY'] = 'ae9687abcd264da981499341b1b941de'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:1234@localhost:5432/Flask_blog_rest'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@localhost:5432/Flask_blog_rest'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)

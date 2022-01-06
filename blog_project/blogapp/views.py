@@ -1,9 +1,9 @@
-from flask import flash, redirect, render_template, url_for, request, json, jsonify, Response
+from flask import flash, redirect, render_template, url_for, request, json, jsonify, Response, abort, g, make_response
 from blogapp import app, db, bcrypt, mail, celery, api
 from flask.views import View
 from flask.views import MethodView
 # from .forms import RegistrationForm, LoginForm, UpdateAccountForm, PostForm,  RequestResetForm, ResetPasswordForm, CommentForm
-from blogapp.models import User
+from blogapp.models import User, Post, token_required
 # from flask_login import login_user, current_user, logout_user, login_required
 import secrets
 import os
@@ -13,99 +13,157 @@ import os
 from datetime import datetime
 from sqlalchemy import func
 from flask_restplus import Resource, Api
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_httpauth import HTTPBasicAuth
+import jwt
+import datetime
 
-name_space = api.namespace('main', description='Main APIs')
+auth = HTTPBasicAuth()
+# name_space = api.namespace('main', description='Main APIs')
 
-@name_space.route("/")
-class User(Resource):
-    def get(self):
-        return_value = User.get_user(id)
-        return jsonify(return_value)
+# @name_space.route("/")
+
+@app.route('/get_all_user', methods=['GET'])
+# class User(Resource):
+def get_all_user():
+	return_value = User.get_all_users()
+	return jsonify(return_value)
     
-	def post(self):
-		request_data = request.get_json()  # getting data from client
-		User.add_user(request_data["username"], request_data["email"],
-						request_data["password"])
-		response = Response("User added", 201, mimetype='application/json')
-		return response
 
-
-
-
-# @api.route('/hello')
-# class HelloWorld(Resource):
-#     def get(self):
-#         return {'hello': 'world'}
-
-# @app.route("/")
-# @app.route("/home")
-# def home():
-#     page = request.args.get('page', 1, type=int)
-#     posts = posts = Post.query.order_by(Post.date_posted.desc()).paginate(page=page, per_page=5)
-
-#     search_post = request.args.get('search_post')
-#     if search_post:
-#         search_post = search_post.strip()
-
-#     sort_by = request.args.get('sort_by')
+@app.route('/get_user/<int:id>', methods=['GET'])
+# class User(Resource):
+def get_user(id):
+	return_value = User.get_user(id)
+	return jsonify(return_value)
     
-#     if search_post and sort_by:
-#         posts = Post.query.filter(Post.title.ilike('%' + search_post + '%'))
 
-#         if sort_by == 'oldest':
-#             posts = posts.order_by(Post.date_posted).paginate(page=page, per_page=5)
-#         elif sort_by == 'most_liked':
-#             posts = posts.outerjoin(PostLike).group_by(Post.id).order_by(func.count().desc(), Post.date_posted.desc()).paginate(page=page, per_page=5)
-#         elif sort_by == 'newest':
-#             posts = posts.order_by(Post.date_posted.desc()).paginate(page=page, per_page=5)
+@app.route('/add_user', methods=['POST'])
+def add_user():
+	username = request.json.get('username')
+	password = request.json.get('password')
+	if username is None or password is None:
+		abort(400) # missing arguments
+	if User.query.filter_by(username = username).first() is not None:
+		abort(400) # existing user
+	user = User(username = username)
+	user.hash_password(password)
+	db.session.add(user)
+	db.session.commit()
+	# return jsonify({ 'username': user.username }), 201, {'Location': url_for('get_user', id = user.id, _external = True)}
+
+	# request_data = request.get_json()  # getting data from client
+	# User.add_user(request_data["username"], request_data["email"],
+	# 				request_data["password"])
+	response = Response("User added", 201, mimetype='application/json')
+	return response
+
+
+@app.route('/api/resource')
+@auth.login_required
+def get_resource():
+    return jsonify({ 'data': 'Hello, %s!' % g.user.username })
+
+
+# @app.route('/api/token')
+# # @auth.login_required
+# def get_auth_token():
+#     token = g.user.generate_auth_token()
+#     return jsonify({ 'token': token.decode('ascii') })
+
+
+# @auth.verify_password
+# def verify_password(username_or_token, password):
+#     # first try to authenticate by token
+#     user = User.verify_auth_token(username_or_token)
+#     if not user:
+#         # try to authenticate with username/password
+#         user = User.query.filter_by(username = username_or_token).first()
+#         if not user or not user.verify_password(password):
+#             return False
+#     g.user = user
+#     return True
+
+
+
+
+
+@app.route('/login', methods=['GET', 'POST'])  
+def login_user(): 
+ 
+	# auth = request.authorization  
+
+	username = request.json.get('username')
+	password = request.json.get('password') 
+
+	if not username or not password:  
+		# return jsonify({'message': 'could not verify'})
+		
+		return make_response('could not verify', 401, {'WWW.Authentication': 'Basic realm: "login required"'})    
+
+	user = User.query.filter_by(username=username).first()   
+		
+	# if check_password_hash(password, user.password):  
+	token = jwt.encode({'public_id': user.id, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'])  
+	return jsonify({'token' : token.decode('UTF-8')}) 
+
+	
+	# return make_response('could not verify',  401, {'WWW.Authentication': 'Basic realm: "login required"'})
+
+
+@app.route("/")
+@app.route("/home")
+@token_required
+def home(current_user):
+    # posts = Post.query.order_by(Post.date_posted.desc())
+
+    # search_post = request.args.get('search_post')
+    # if search_post:
+    #     search_post = search_post.strip()
+
+    # sort_by = request.json.get('sort_by')
+
+
+
+
+	return_value = Post.get_all_posts()
+    
+
+
+
+	return jsonify({"posts":return_value,
+	# "sort_by":sort_by
+	}) 
+
+    # if search_post and sort_by:
+    #     posts = Post.query.filter(Post.title.ilike('%' + search_post + '%'))
+
+    #     if sort_by == 'oldest':
+    #         posts = posts.order_by(Post.date_posted).paginate(page=page, per_page=5)
+    #     elif sort_by == 'most_liked':
+    #         posts = posts.outerjoin(PostLike).group_by(Post.id).order_by(func.count().desc(), Post.date_posted.desc()).paginate(page=page, per_page=5)
+    #     elif sort_by == 'newest':
+    #         posts = posts.order_by(Post.date_posted.desc()).paginate(page=page, per_page=5)
            
-#     elif search_post:
-#         posts = Post.query.filter(Post.title.ilike('%' + search_post + '%')).paginate(page, per_page=5)
+    # elif search_post:
+    #     posts = Post.query.filter(Post.title.ilike('%' + search_post + '%')).paginate(page, per_page=5)
     
-#     elif sort_by:
-#         if sort_by == 'oldest':
-#             posts = Post.query.order_by(Post.date_posted).paginate(page=page, per_page=5)
-#         elif sort_by == 'most_liked':
-#             posts = Post.query.outerjoin(PostLike).group_by(Post.id).order_by(func.count().desc(), Post.date_posted.desc()).paginate(page=page, per_page=5)
-#         elif sort_by == 'newest':
-#             posts = posts = Post.query.order_by(Post.date_posted.desc()).paginate(page=page, per_page=5)
-#     return render_template('home.html', posts=posts, sort_by=sort_by, search_post=search_post)
+    # if sort_by:
+    #     if sort_by == 'oldest':
+    #         posts = Post.query.order_by(Post.date_posted)
+    #     # elif sort_by == 'most_liked':
+    #     #     posts = Post.query.outerjoin(PostLike).group_by(Post.id).order_by(func.count().desc(), Post.date_posted.desc()).paginate(page=page, per_page=5)
+    #     elif sort_by == 'newest':
+    #         posts = posts = Post.query.order_by(Post.date_posted.desc())
+	
+	
 
-
-# @app.route("/about")
-# def about():
-#     return render_template('about.html', title='About')
-
-
-# @app.route("/register", methods=['GET', 'POST'])
-# def register():
-#     if current_user.is_authenticated:
-#         return redirect(url_for('home'))
-#     form = RegistrationForm()
-#     if form.validate_on_submit():
-#         hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
-#         user = User(username=form.username.data, email=form.email.data, password=hashed_password)
-#         db.session.add(user)
-#         db.session.commit()
-#         flash('Your account has been created! You are now able to log in', 'success')
-#         return redirect(url_for('login'))
-#     return render_template('register.html', title='Register', form=form)
-
-
-# @app.route("/login", methods=['GET', 'POST'])
-# def login():
-#     if current_user.is_authenticated:
-#         return redirect(url_for('home'))
-#     form = LoginForm()
-#     if form.validate_on_submit():
-#         user = User.query.filter_by(email=form.email.data).first()
-#         if user and bcrypt.check_password_hash(user.password, form.password.data):
-#             login_user(user, remember=form.remember.data)
-#             next_page = request.args.get('next')
-#             return redirect(next_page) if next_page else redirect(url_for('home'))
-#         else:
-#             flash('Login Unsuccessful. Please check email and password', 'danger')
-#     return render_template('login.html', title='Login', form=form)
+@app.route('/get_post', methods=['POST'])
+@token_required
+def get_post(current_user):
+	id = request.json.get('id')
+	return_value = Post.get_post(id)
+	return jsonify(return_value)
+    
 
 
 # @app.route("/logout")
@@ -113,17 +171,6 @@ class User(Resource):
 #     logout_user()
 #     return redirect(url_for('home'))
 
-# def save_picture(form_picture):
-#     random_hex = secrets.token_hex(8)
-#     _, f_ext = os.path.splitext(form_picture.filename)
-#     picture_fn = random_hex + f_ext
-#     picture_path = os.path.join(app.root_path, 'static/profile_pics', picture_fn)
-#     form_picture.save(picture_path)
-#     output_size = (125, 125)
-#     i = Image.open(form_picture)
-#     i.thumbnail(output_size)
-#     i.save(picture_path)
-#     return picture_fn
 
 # @app.route("/account", methods=['GET', 'POST'] )
 # @login_required
@@ -145,17 +192,16 @@ class User(Resource):
 #     return render_template('account.html', title='Account', image_file=image_file, form=form)
 
 
-# @app.route("/post/new", methods=['GET', 'POST'])
-# @login_required
-# def new_post():
-#     form = PostForm()
-#     if form.validate_on_submit():
-#         post = Post(title=form.title.data, content=form.content.data, author=current_user)
-#         db.session.add(post)
-#         db.session.commit()
-#         flash('Your post has been created','success')
-#         return redirect(url_for('home'))
-#     return render_template('create_post.html', title='New Post', form=form,  legend='New Post')
+@app.route("/post/new", methods=['GET', 'POST'])
+@token_required
+def new_post(current_user):
+	title = request.json.get('title')
+	content = request.json.get('content') 
+	post = Post(title=title, content=content, user_id=current_user)
+	db.session.add(post)
+	db.session.commit()
+	flash('Your post has been created','success')
+	return {'title': title,'content':content}
 
 # @app.route("/post/<int:post_id>", methods=['GET','POST'])
 # def post(post_id):
@@ -166,36 +212,31 @@ class User(Resource):
 #         comments=None
 #     return render_template('post.html', title=post.title, post=post, comments=comments, form=form)
 
-# @app.route("/post/<int:post_id>/update", methods=['GET','POST'])
-# @login_required
-# def update_post(post_id):
-#     post = Post.query.get_or_404(post_id)
-#     if post.author!= current_user:
-#         abort(403)
-#     form = PostForm()
-#     if form.validate_on_submit():
-#         post.title = form.title.data
-#         post.content = form.content.data
-#         post.date_updated = datetime.now()
-#         db.session.commit()
-#         flash('Your post has been updated','success')
-#         return redirect(url_for('post',post_id=post.id))
-#     elif request.method == 'GET':
-#         form.title.data = post.title
-#         form.content.data = post.content
-#     return render_template('create_post.html', title='Update Post', form=form, legend='Update Post')
+@app.route("/post/update", methods=['GET','POST'])
+@token_required
+def update_user_post(current_user):
+	request_data = request.get_json()
+	post = Post.query.get_or_404(request_data['id'])
+	
+	if post.user_id!= current_user:
+		abort(403)
 
+	Post.update_post(request_data['id'], request_data['title'], request_data['content'])    
+	response = Response("Post Updated", status=200, mimetype='application/json')
+	return response
 
-# @app.route("/post/<int:post_id>/delete", methods=['POST'])
-# @login_required
-# def delete_post(post_id):
-#     post = Post.query.get_or_404(post_id)
-#     if post.author != current_user:
-#         abort(403)
-#     db.session.delete(post)
-#     db.session.commit()
-#     flash('Your post has been deleted!', 'success')
-#     return redirect(url_for('home'))
+@app.route("/post/delete", methods=['POST'])
+@token_required
+def delete_post(current_user):
+	request_data = request.get_json()
+	post = Post.query.get_or_404(request_data['id'])
+
+	if post.user_id != current_user:
+		abort(403)	
+
+	Post.delete_post(request_data['id'])    
+	response = Response("Post deleted", status=200, mimetype='application/json')
+	return response
 
 # @app.route("/user/<string:username>")
 # def user_posts(username):
@@ -363,8 +404,6 @@ class User(Resource):
 # def following():
 #     return render_template("following.html")
 
-# class HelloWorld(Resource):
-#     def get(self):
-#         return {'hello': 'world'}
+
 
 # api.add_resource(HelloWorld, '/api')
