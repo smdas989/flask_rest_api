@@ -8,7 +8,6 @@ import os
 from celery import Celery
 from flask_restplus import Api
 
-
 app = Flask(__name__)
 api = Api(app)
 app.config['SECRET_KEY'] = 'ae9687abcd264da981499341b1b941de'

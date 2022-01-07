@@ -7,7 +7,6 @@ from blogapp.models import User, Post, token_required
 # from flask_login import login_user, current_user, logout_user, login_required
 import secrets
 import os
-# from PIL import Image
 # from flask_paginate import Pagination, get_page_parameter
 # from flask_mail import Message
 from datetime import datetime
@@ -18,10 +17,28 @@ from flask_httpauth import HTTPBasicAuth
 import jwt
 import datetime
 
-auth = HTTPBasicAuth()
 # name_space = api.namespace('main', description='Main APIs')
 
 # @name_space.route("/")
+
+@app.route('/add_user', methods=['POST'])
+def add_user():
+	username = request.json.get('username')
+	password = request.json.get('password')
+	email = request.json.get('email')
+
+	user = User.add_user(username, email, password)
+
+	if username is None or password is None:
+		abort(400) # missing arguments
+	
+	# user = User(username = username)
+	# user.hash_password(password)
+	db.session.add(user)
+	db.session.commit()
+	
+	response = Response("User added", 201, mimetype='application/json')
+	return response
 
 @app.route('/get_all_user', methods=['GET'])
 # class User(Resource):
@@ -36,53 +53,6 @@ def get_user(id):
 	return_value = User.get_user(id)
 	return jsonify(return_value)
     
-
-@app.route('/add_user', methods=['POST'])
-def add_user():
-	username = request.json.get('username')
-	password = request.json.get('password')
-	if username is None or password is None:
-		abort(400) # missing arguments
-	if User.query.filter_by(username = username).first() is not None:
-		abort(400) # existing user
-	user = User(username = username)
-	user.hash_password(password)
-	db.session.add(user)
-	db.session.commit()
-	# return jsonify({ 'username': user.username }), 201, {'Location': url_for('get_user', id = user.id, _external = True)}
-
-	# request_data = request.get_json()  # getting data from client
-	# User.add_user(request_data["username"], request_data["email"],
-	# 				request_data["password"])
-	response = Response("User added", 201, mimetype='application/json')
-	return response
-
-
-@app.route('/api/resource')
-@auth.login_required
-def get_resource():
-    return jsonify({ 'data': 'Hello, %s!' % g.user.username })
-
-
-# @app.route('/api/token')
-# # @auth.login_required
-# def get_auth_token():
-#     token = g.user.generate_auth_token()
-#     return jsonify({ 'token': token.decode('ascii') })
-
-
-# @auth.verify_password
-# def verify_password(username_or_token, password):
-#     # first try to authenticate by token
-#     user = User.verify_auth_token(username_or_token)
-#     if not user:
-#         # try to authenticate with username/password
-#         user = User.query.filter_by(username = username_or_token).first()
-#         if not user or not user.verify_password(password):
-#             return False
-#     g.user = user
-#     return True
-
 
 
 
@@ -110,7 +80,7 @@ def login_user():
 	# return make_response('could not verify',  401, {'WWW.Authentication': 'Basic realm: "login required"'})
 
 
-@app.route("/")
+# @app.route("/")
 @app.route("/home")
 @token_required
 def home(current_user):
@@ -121,17 +91,14 @@ def home(current_user):
     #     search_post = search_post.strip()
 
     # sort_by = request.json.get('sort_by')
-
-
-
+	print(request.args)
+	print(request.data)
+	print(request.json)
 
 	return_value = Post.get_all_posts()
-    
-
-
 
 	return jsonify({"posts":return_value,
-	# "sort_by":sort_by
+	"sort_by":request.json.get('sort_by')
 	}) 
 
     # if search_post and sort_by:
@@ -156,6 +123,16 @@ def home(current_user):
     #         posts = posts = Post.query.order_by(Post.date_posted.desc())
 	
 	
+@app.route("/post/new", methods=['GET', 'POST'])
+@token_required
+def new_post(current_user):
+	title = request.json.get('title')
+	content = request.json.get('content') 
+	post = Post(title=title, content=content, user_id=current_user)
+	db.session.add(post)
+	db.session.commit()
+	flash('Your post has been created','success')
+	return {'title': title,'content':content}
 
 @app.route('/get_post', methods=['POST'])
 @token_required
@@ -165,11 +142,32 @@ def get_post(current_user):
 	return jsonify(return_value)
     
 
+@app.route("/post/update", methods=['GET','POST'])
+@token_required
+def update_user_post(current_user):
+	request_data = request.get_json()
+	post = Post.query.get_or_404(request_data['id'])
+	
+	if post.user_id!= current_user:
+		abort(403)
 
-# @app.route("/logout")
-# def logout():
-#     logout_user()
-#     return redirect(url_for('home'))
+	Post.update_post(request_data['id'], request_data['title'], request_data['content'])    
+	response = Response("Post Updated", status=200, mimetype='application/json')
+	return response
+
+
+@app.route("/post/delete", methods=['POST'])
+@token_required
+def delete_post(current_user):
+	request_data = request.get_json()
+	post = Post.query.get_or_404(request_data['id'])
+
+	if post.user_id != current_user:
+		abort(403)	
+
+	Post.delete_post(request_data['id'])    
+	response = Response("Post deleted", status=200, mimetype='application/json')
+	return response
 
 
 # @app.route("/account", methods=['GET', 'POST'] )
@@ -192,16 +190,7 @@ def get_post(current_user):
 #     return render_template('account.html', title='Account', image_file=image_file, form=form)
 
 
-@app.route("/post/new", methods=['GET', 'POST'])
-@token_required
-def new_post(current_user):
-	title = request.json.get('title')
-	content = request.json.get('content') 
-	post = Post(title=title, content=content, user_id=current_user)
-	db.session.add(post)
-	db.session.commit()
-	flash('Your post has been created','success')
-	return {'title': title,'content':content}
+
 
 # @app.route("/post/<int:post_id>", methods=['GET','POST'])
 # def post(post_id):
@@ -212,31 +201,7 @@ def new_post(current_user):
 #         comments=None
 #     return render_template('post.html', title=post.title, post=post, comments=comments, form=form)
 
-@app.route("/post/update", methods=['GET','POST'])
-@token_required
-def update_user_post(current_user):
-	request_data = request.get_json()
-	post = Post.query.get_or_404(request_data['id'])
-	
-	if post.user_id!= current_user:
-		abort(403)
 
-	Post.update_post(request_data['id'], request_data['title'], request_data['content'])    
-	response = Response("Post Updated", status=200, mimetype='application/json')
-	return response
-
-@app.route("/post/delete", methods=['POST'])
-@token_required
-def delete_post(current_user):
-	request_data = request.get_json()
-	post = Post.query.get_or_404(request_data['id'])
-
-	if post.user_id != current_user:
-		abort(403)	
-
-	Post.delete_post(request_data['id'])    
-	response = Response("Post deleted", status=200, mimetype='application/json')
-	return response
 
 # @app.route("/user/<string:username>")
 # def user_posts(username):
@@ -305,18 +270,18 @@ def delete_post(current_user):
 #         return redirect(url_for('login'))
 #     return render_template('reset_token.html', title='Reset Password', form=form)
 
-# @app.route('/like/<int:post_id>/<action>')
-# @login_required
-# def like_action(post_id, action):
-#     post = Post.query.filter_by(id=post_id).first_or_404()
+@app.route('/like/<int:post_id>/<action>')
+@token_required
+def like_action(current_user, post_id, action):
+    post = Post.query.filter_by(id=post_id).first_or_404()
     
-#     if action == 'like':
-#         current_user.like_post(post)
-#         db.session.commit()
-#     if action == 'unlike':
-#         current_user.unlike_post(post)
-#         db.session.commit()
-#     return redirect(request.referrer)
+    if action == 'like':
+        current_user.like_post(post)
+        db.session.commit()
+    if action == 'unlike':
+        current_user.unlike_post(post)
+        db.session.commit()
+    return {'title': "post"}
 
 
 # @app.route('/comment/<int:post_id>', methods=['GET', 'POST'])

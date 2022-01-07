@@ -19,18 +19,17 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True)
-    # image_file = db.Column(db.String(20), nullable=False, default='default.jpg')
     password = db.Column(db.String(60), nullable=False)
     posts = db.relationship('Post', backref='author', lazy=True)
-    # liked = db.relationship(
-    #     'PostLike',
-    #     foreign_keys='PostLike.user_id',
-    #     backref='user', lazy='dynamic')
+    liked = db.relationship(
+        'PostLike',
+        foreign_keys='PostLike.user_id',
+        backref='user', lazy='dynamic')
 
-    # comment = db.relationship(
-    #     'Comment',
-    #     foreign_keys='Comment.user_id',
-    #     backref='user', lazy='dynamic')
+    comment = db.relationship(
+        'Comment',
+        foreign_keys='Comment.user_id',
+        backref='user', lazy='dynamic')
 
     
     # followed = db.relationship('User', 
@@ -40,21 +39,21 @@ class User(db.Model, UserMixin):
     #                            backref=db.backref('followers', lazy='dynamic'), 
     #                            lazy='dynamic')
 
-    # def like_post(self, post):
-    #     if not self.has_liked_post(post):
-    #         like = PostLike(user_id=self.id, post_id=post.id)
-    #         db.session.add(like)
+    def like_post(self, post):
+        if not self.has_liked_post(post):
+            like = PostLike(user_id=self.id, post_id=post.id)
+            db.session.add(like)
 
-    # def unlike_post(self, post):
-    #     if self.has_liked_post(post):
-    #         PostLike.query.filter_by(
-    #             user_id=self.id,
-    #             post_id=post.id).delete()
+    def unlike_post(self, post):
+        if self.has_liked_post(post):
+            PostLike.query.filter_by(
+                user_id=self.id,
+                post_id=post.id).delete()
 
-    # def has_liked_post(self, post):
-    #     return PostLike.query.filter(
-    #         PostLike.user_id == self.id,
-    #         PostLike.post_id == post.id).count() > 0
+    def has_liked_post(self, post):
+        return PostLike.query.filter(
+            PostLike.user_id == self.id,
+            PostLike.post_id == post.id).count() > 0
 
     # def follow(self, user):
     #     if not self.is_following(user):
@@ -94,9 +93,10 @@ class User(db.Model, UserMixin):
         '''function to add movie to database using _title, _year, _genre
         as parameters'''
         # creating an instance of our Movie constructor
+        # if User.query.filter_by(username = _username).first() is not None:
+		#     abort(400) # existing user
         user = User(username = _username, email = _email, password = _password)
-        db.session.add(user)  # add new movie to database session
-        db.session.commit()  # commit changes to session
+        return user
 
     def get_all_users():
         '''function to get all movies in our database'''
@@ -142,14 +142,13 @@ class User(db.Model, UserMixin):
     def __repr__(self):
         return f"User('{self.username}', '{self.email}')"
         
-# class PostLike(db.Model):
-#     id = db.Column(db.Integer, primary_key=True)
-#     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-#     post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
+class PostLike(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
     
 
     
-
 class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
@@ -157,11 +156,11 @@ class Post(db.Model):
     date_updated = db.Column(db.DateTime, default=datetime.utcnow)
     content = db.Column(db.Text, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    # likes = db.relationship('PostLike', backref='post', lazy='dynamic')
-    # comments = db.relationship('Comment', backref='title', lazy='dynamic')
+    likes = db.relationship('PostLike', backref='post', lazy='dynamic')
+    comments = db.relationship('Comment', backref='title', lazy='dynamic')
 
-    # def get_comments(self):
-    #     return Comment.query.filter_by(post_id=post.id).order_by(Comment.timestamp.desc())
+    def get_comments(self):
+        return Comment.query.filter_by(post_id=post.id).order_by(Comment.timestamp.desc())
     def json(self):
         return {'id': self.id, 'title': self.title,
                 'content': self.content}
@@ -187,15 +186,15 @@ class Post(db.Model):
         return f"User('{self.title}', '{self.date_posted}')"
 
 
-# class Comment(db.Model):
-#     __tablename__ = 'comments'
-#     id = db.Column(db.Integer, primary_key=True)
-#     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-#     post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
-#     body = db.Column(db.Text)
+class Comment(db.Model):
+    __tablename__ = 'comments'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
+    body = db.Column(db.Text)
     
-#     def __repr__(self):
-#         return f"Comment('{self.body}')"
+    def __repr__(self):
+        return f"Comment('{self.body}')"
 
 def token_required(f):
     @wraps(f)
@@ -214,5 +213,5 @@ def token_required(f):
         except:
             return jsonify({'message': 'token is invalid'})
 
-        return f(current_user.id, *args, **kwargs)
+        return f(current_user, *args, **kwargs)
     return decorator
