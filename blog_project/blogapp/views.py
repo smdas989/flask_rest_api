@@ -2,13 +2,9 @@ from flask import flash, redirect, render_template, url_for, request, json, json
 from blogapp import app, db, bcrypt, mail, celery, api
 from flask.views import View
 from flask.views import MethodView
-# from .forms import RegistrationForm, LoginForm, UpdateAccountForm, PostForm,  RequestResetForm, ResetPasswordForm, CommentForm
-from blogapp.models import User, Post, token_required
-# from flask_login import login_user, current_user, logout_user, login_required
+from blogapp.models import User, Post, token_required, Comment
 import secrets
 import os
-# from flask_paginate import Pagination, get_page_parameter
-# from flask_mail import Message
 from datetime import datetime
 from sqlalchemy import func
 from flask_restplus import Resource, Api
@@ -17,9 +13,6 @@ from flask_httpauth import HTTPBasicAuth
 import jwt
 import datetime
 
-# name_space = api.namespace('main', description='Main APIs')
-
-# @name_space.route("/")
 
 @app.route('/add_user', methods=['POST'])
 def add_user():
@@ -41,21 +34,16 @@ def add_user():
 	return response
 
 @app.route('/get_all_user', methods=['GET'])
-# class User(Resource):
 def get_all_user():
 	return_value = User.get_all_users()
 	return jsonify(return_value)
     
 
 @app.route('/get_user/<int:id>', methods=['GET'])
-# class User(Resource):
 def get_user(id):
 	return_value = User.get_user(id)
 	return jsonify(return_value)
     
-
-
-
 
 @app.route('/login', methods=['GET', 'POST'])  
 def login_user(): 
@@ -91,9 +79,6 @@ def home(current_user):
     #     search_post = search_post.strip()
 
     # sort_by = request.json.get('sort_by')
-	print(request.args)
-	print(request.data)
-	print(request.json)
 
 	return_value = Post.get_all_posts()
 
@@ -128,7 +113,7 @@ def home(current_user):
 def new_post(current_user):
 	title = request.json.get('title')
 	content = request.json.get('content') 
-	post = Post(title=title, content=content, user_id=current_user)
+	post = Post(title=title, content=content, user_id=current_user.id)
 	db.session.add(post)
 	db.session.commit()
 	flash('Your post has been created','success')
@@ -212,15 +197,6 @@ def delete_post(current_user):
 #         .paginate(page=page, per_page=5)
 #     return render_template('user_posts.html', posts=posts, user=user)
 
-# @app.route("/process/<name>", methods=['GET', 'POST'])
-# def process(name):
-#     reverse.delay(name)
-#     return "ASYNC"
-
-# @celery.task
-# def reverse(string):
-#     print("New")
-#     return string[::-1]
 
 
 # @celery.task
@@ -274,82 +250,79 @@ def delete_post(current_user):
 @token_required
 def like_action(current_user, post_id, action):
     post = Post.query.filter_by(id=post_id).first_or_404()
-    
+    msg=''
     if action == 'like':
         current_user.like_post(post)
         db.session.commit()
+        msg = "Successfully like the post"
+	
     if action == 'unlike':
         current_user.unlike_post(post)
         db.session.commit()
-    return {'title': "post"}
+        msg = "Successfully unlike the post"
+    
+    return {'msg': msg,
+			'user':current_user.username,
+			'post':post.title
+			}
 
 
-# @app.route('/comment/<int:post_id>', methods=['GET', 'POST'])
-# @login_required
-# def comment(post_id=None):
-#     post = Post.query.get_or_404(post_id)
-#     form = CommentForm()
-#     if form.validate_on_submit():
-#         comment = Comment(body=form.content.data.strip(), post_id=post_id, user_id = current_user.id)
-#         db.session.add(comment)
-#         db.session.commit()
-#         return redirect(url_for('post', post_id=post.id))
-#     return render_template("post.html", post=post, form=form)
-
-# @app.route('/comment/<int:comment_id>/delete', methods=['GET', 'POST'])
-# @login_required
-# def comment_delete(comment_id=None, post_id=None):
-#     comment = Comment.query.get_or_404(comment_id)
-#     db.session.delete(comment)
-#     db.session.commit()
-#     flash('Your comment has been deleted!', 'success')
-#     return redirect(request.referrer)
+@app.route('/comment/<int:post_id>', methods=['GET', 'POST'])
+@token_required
+def comment(current_user, post_id=None):
+    post = Post.query.get_or_404(post_id)
+    request_data = request.get_json()
+    
+    comment = Comment(body=request_data['comment'].strip(), post_id=post_id, user_id = current_user.id)
+    db.session.add(comment)
+    db.session.commit()
+    response = Response("Comment Added", status=200, mimetype='application/json')
+    return response
 
 
-# @app.route('/profile/<int:user_id>', methods=['GET'])
-# @login_required
-# def user_profile(user_id=None):
-#     user = User.query.get_or_404(user_id)
-#     return render_template("profile.html", user=user)
+@app.route('/comment/<int:comment_id>/delete', methods=['GET', 'POST'])
+@token_required
+def comment_delete(current_user, comment_id=None, post_id=None):
+    comment = Comment.query.get_or_404(comment_id)
+    db.session.delete(comment)
+    db.session.commit()
+    response = Response("Comment Deleted", status=200, mimetype='application/json')
+    return response
 
-# @app.route('/follow/<username>')
-# @login_required
-# def follow(username):
-#     user = User.query.filter_by(username=username).first()
-#     if user is None:
-#         flash('User %s not found.' % username)
-#         return redirect(url_for('home'))
-#     if user == current_user:
-#         flash('You can\'t follow yourself!')
-#         return redirect(url_for('user_profile', user_id=user.id))
-#     u = current_user.follow(user)
-#     if u is None:
-#         flash('Cannot follow ' + username + '.')
-#         return redirect(url_for('user', user_id=user.id))
-#     db.session.add(u)
-#     db.session.commit()
-#     flash('You are now following ' + username + '!',  'success')
-#     return redirect(url_for('user_profile', user_id=user.id))
 
-# @app.route('/unfollow/<username>')
-# @login_required
-# def unfollow(username):
-#     user = User.query.filter_by(username=username).first()
-#     if user is None:
-#         flash('User %s not found.' % username)
-#         return redirect(url_for('home'))
-#     if user == current_user:
-#         flash('You can\'t unfollow yourself!')
-#         return redirect(url_for('user_profile', user_id=user.id))
-#     u = current_user.unfollow(user)
-#     if u is None:
-#         flash('Cannot unfollow ' + username + '.')
-#         return redirect(url_for('user_profile', user_id=user.id))
-#     db.session.add(u)
-#     db.session.commit()
-#     flash('You have stopped following ' + username + '.', 'danger')
-#     return redirect(url_for('user_profile', user_id=user.id))
+@app.route('/follow/<username>')
+@token_required
+def follow(current_user, username):
+	user = User.query.filter_by(username=username).first_or_404()
+	if user is None:
+		Response('User %s not found.' % username, status=404, mimetype='application/json')
+	if user == current_user:
+		Response('You can\'t follow yourself!', status=404, mimetype='application/json')
 
+	u = current_user.follow(user)
+	if u is None:
+		Response('Cannot follow ' + username + '.', status=404, mimetype='application/json')
+    	
+	db.session.add(u)
+	db.session.commit()
+	response = Response("You are now following "+username, status=200, mimetype='application/json')
+	return response
+
+@app.route('/unfollow/<username>')
+@token_required
+def unfollow(current_user, username):
+    user = User.query.filter_by(username=username).first_or_404()
+    if user is None:
+	    Response('User %s not found.' % username, status=404, mimetype='application/json')
+    if user == current_user:
+	    Response('You can\'t unfollow yourself!', status=404, mimetype='application/json')
+    u = current_user.unfollow(user)
+    if u is None:
+	    Response('Cannot unfollow ' + username + '.', status=404, mimetype='application/json')
+    db.session.add(u)
+    db.session.commit()
+    response = Response("You have successfully unfollowed "+username, status=200, mimetype='application/json')
+    return response
 
 # @app.route('/feed')
 # @login_required
@@ -359,16 +332,13 @@ def like_action(current_user, post_id, action):
 #     return render_template("feed.html", posts=posts)
 
 # @app.route('/followers')
-# @login_required
-# def followers():
-#     return render_template("followers.html")
+# @token_required
+# def followers(current_user):
+#     response = current_user.is_following(current_user)
+#     return response
 
 
 # @app.route('/following')
-# @login_required
+# @token_required
 # def following():
 #     return render_template("following.html")
-
-
-
-# api.add_resource(HelloWorld, '/api')
