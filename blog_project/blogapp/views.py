@@ -1,5 +1,5 @@
 from flask import flash, redirect, render_template, url_for, request, json, jsonify, Response, abort, g, make_response
-from blogapp import app, db, bcrypt, mail, celery, api
+from blogapp import app, db, bcrypt, mail, celery
 from flask.views import View
 from flask.views import MethodView
 from blogapp.models import User, Post, token_required, Comment
@@ -331,11 +331,16 @@ def unfollow(current_user, username):
 #     posts = current_user.followed_posts().paginate(page=page, per_page=5)
 #     return render_template("feed.html", posts=posts)
 
-# @app.route('/followers')
-# @token_required
-# def followers(current_user):
-#     response = current_user.is_following(current_user)
-#     return response
+@app.route('/list_of_followers/<username>')
+@token_required
+def followers(current_user, username):
+    user = User.query.filter_by(username=username).first_or_404()
+    user_followers = user.followers.all()
+    response = {
+        'status': 'success',
+        'message': 'Your followers list is: ' + str(user_followers) + '.'
+    } 
+    return response
 
 
 # @app.route('/following')
