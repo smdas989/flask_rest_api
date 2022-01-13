@@ -37,4 +37,10 @@ celery.conf.update(app.config)
    
 mail = Mail(app)
 
-from blogapp import views
+from blogapp.users.routes import users
+from blogapp.posts.routes import posts
+from blogapp.main.routes import main
+
+app.register_blueprint(users)
+app.register_blueprint(posts)
+app.register_blueprint(main)
